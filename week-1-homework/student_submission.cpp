@@ -14,7 +14,31 @@ uint8_t dict[UNIQUE_CHARACTERS];
 
 int powers[UNIQUE_CHARACTERS][BLOCK_SIZE + 1];
 
-void substitute_bytes() {
+/*
+ * This function shifts (rotates) a row in the message array by one place to the
+ * left.
+ * @param row The row which to shift.
+ */
+
+/*
+ * This function shifts each row by the number of places it is meant to be
+ * shifted according to the AES specification. Row zero is shifted by zero
+ * places. Row one by one, etc. This corresponds to step 2.2 in the VV-AES
+ * explanation.
+ */
+void shift_rows(int row, int times) {
+  // Shift each row, where the row index corresponds to how many columns the
+  // data is shifted.
+  for (int shifts = 0; shifts < times; ++shifts) {
+    auto first_char = message[row][0];
+    for (unsigned int i = 0; i < BLOCK_SIZE - 1; i++) {
+      message[row][i] = message[row][i + 1];
+    }
+    message[row][BLOCK_SIZE - 1] = first_char;
+  }
+}
+
+void substitute_bytes_and_shift() {
   // For each byte in the message
   for (int row = 0; row < BLOCK_SIZE; row++) {
     for (int column = 0; column < BLOCK_SIZE; column++) {
@@ -23,55 +47,18 @@ void substitute_bytes() {
       // character list
       message[row][column] = dict[message[row][column]];
     }
-  }
-}
-
-/*
- * This function shifts (rotates) a row in the message array by one place to the
- * left.
- * @param row The row which to shift.
- */
-void shift_row(int row) {
-  // This does a shift (really a rotate) of a row, copying each element to the
-  // left
-  auto first_char = message[row][0];
-  for (unsigned int i = 0; i < BLOCK_SIZE - 1; i++) {
-    message[row][i] = message[row][i + 1];
-  }
-  message[row][BLOCK_SIZE - 1] = first_char;
-}
-
-/*
- * This function shifts each row by the number of places it is meant to be
- * shifted according to the AES specification. Row zero is shifted by zero
- * places. Row one by one, etc. This corresponds to step 2.2 in the VV-AES
- * explanation.
- */
-void shift_rows() {
-  // Shift each row, where the row index corresponds to how many columns the
-  // data is shifted.
-  for (int row = 1; row < BLOCK_SIZE; ++row) {
-    for (int shifts = 0; shifts < row; ++shifts) {
-      shift_row(row);
-    }
+    shift_rows(row, row);
   }
 }
 
 /*
  * This function calculates x^n for polynomial evaluation.
  */
-int power(int x, int n, int a = 1) {
-  // Calculates x^n
-  if (n == 0) {
-    return a;
-  }
-  return power(x, n - 1, x * a);
-}
-
 void precalculate_powers() {
   for (int i = 0; i < UNIQUE_CHARACTERS; ++i) {
-    for (int j = 0; j < BLOCK_SIZE + 1; ++j) {
-      powers[i][j] = power(i, j);
+    powers[i][0] = 1;
+    for (int j = 1; j < BLOCK_SIZE + 1; ++j) {
+      powers[i][j] = powers[i][j - 1] * i;
     }
   }
 }
@@ -156,14 +143,12 @@ int main() {
       set_next_key();
 
       // These are the four steps described in the slides.
-      substitute_bytes();
-      shift_rows();
+      substitute_bytes_and_shift();
       mix_columns();
       add_key();
     }
     // Final round
-    substitute_bytes();
-    shift_rows();
+    substitute_bytes_and_shift();
     add_key();
   }
 

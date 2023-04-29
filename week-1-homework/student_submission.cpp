@@ -12,6 +12,8 @@
 
 uint8_t dict[UNIQUE_CHARACTERS];
 
+int powers[UNIQUE_CHARACTERS][BLOCK_SIZE + 1];
+
 void substitute_bytes() {
   // For each byte in the message
   for (int row = 0; row < BLOCK_SIZE; row++) {
@@ -66,6 +68,14 @@ int power(int x, int n, int a = 1) {
   return power(x, n - 1, x * a);
 }
 
+void precalculate_powers() {
+  for (int i = 0; i < UNIQUE_CHARACTERS; ++i) {
+    for (int j = 0; j < BLOCK_SIZE + 1; ++j) {
+      powers[i][j] = power(i, j);
+    }
+  }
+}
+
 /*
  * This function evaluates four different polynomials, one for each row in the
  * column. Each polynomial evaluated is of the form m'[row, column] = c[r][3]
@@ -81,7 +91,7 @@ void multiply_with_polynomial(int row) {
     int result = 0;
     for (int degree = 0; degree < BLOCK_SIZE; degree++) {
       result += polynomialCoefficients[row][degree] *
-                power(message[degree][column], degree + 1);
+                powers[message[degree][column]][degree + 1];
     }
     message[row][column] = result;
   }
@@ -109,16 +119,21 @@ void add_key() {
   }
 }
 
-/*
- * Your main encryption routine.
- */
-int main() {
+void create_dict() {
   // Create dictionary in the form substitutedCharacter =
   // dict[originalCharacter]
   for (unsigned int i = 0; i < UNIQUE_CHARACTERS; i++) {
     auto key = originalCharacter[i];
     dict[key] = substitutedCharacter[i];
   }
+}
+
+/*
+ * Your main encryption routine.
+ */
+int main() {
+  create_dict();
+  precalculate_powers();
   // Receive the problem from the system.
   readInput();
 

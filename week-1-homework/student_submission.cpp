@@ -9,17 +9,13 @@
  * the originalCharacter and substitutedCharacter array. This corresponds to
  * step 2.1 in the VV-AES explanation.
  */
+
+uint8_t dict[UNIQUE_CHARACTERS];
+
 void substitute_bytes() {
-  // Create dictionary in the form substitutedCharacter =
-  // dict[originalCharacter]
-  uint8_t dict[UNIQUE_CHARACTERS];
-  for (unsigned int i = 0; i < UNIQUE_CHARACTERS; i++) {
-    auto key = originalCharacter[i];
-    dict[key] = substitutedCharacter[i];
-  }
   // For each byte in the message
-  for (int column = 0; column < BLOCK_SIZE; column++) {
-    for (int row = 0; row < BLOCK_SIZE; row++) {
+  for (int row = 0; row < BLOCK_SIZE; row++) {
+    for (int column = 0; column < BLOCK_SIZE; column++) {
       // Search for the byte in the original character list
       // and replace it with corresponding the element in the substituted
       // character list
@@ -36,15 +32,6 @@ void substitute_bytes() {
 void shift_row(int row) {
   // This does a shift (really a rotate) of a row, copying each element to the
   // left
-  /*auto *newRow = (unsigned char *) (malloc(BLOCK_SIZE));
-
-  for (int i = 0; i < BLOCK_SIZE; ++i) {
-      newRow[i % BLOCK_SIZE] = message[row][(i + 1) % BLOCK_SIZE];
-  }
-
-  memcpy(message[row], newRow, BLOCK_SIZE);
-  free(newRow);*/
-
   auto first_char = message[row][0];
   for (unsigned int i = 0; i < BLOCK_SIZE - 1; i++) {
     message[row][i] = message[row][i + 1];
@@ -88,18 +75,6 @@ int power(int x, int n, int a = 1) {
  * different polynomial), and m is the current message value.
  *
  */
-/*
-void multiply_with_polynomial(int column) {
-    for (int row = 0; row < BLOCK_SIZE; ++row) {
-        int result = 0;
-        for (int degree = 0; degree < BLOCK_SIZE; degree++) {
-            result += polynomialCoefficients[row][degree] *
-power(message[degree][column], degree + 1);
-        }
-        message[row][column] = result;
-    }
-}
-*/
 
 void multiply_with_polynomial(int row) {
   for (int column = 0; column < BLOCK_SIZE; ++column) {
@@ -138,6 +113,12 @@ void add_key() {
  * Your main encryption routine.
  */
 int main() {
+  // Create dictionary in the form substitutedCharacter =
+  // dict[originalCharacter]
+  for (unsigned int i = 0; i < UNIQUE_CHARACTERS; i++) {
+    auto key = originalCharacter[i];
+    dict[key] = substitutedCharacter[i];
+  }
   // Receive the problem from the system.
   readInput();
 
@@ -172,6 +153,6 @@ int main() {
   }
 
   // Submit our solution back to the system.
-  writeOutput();  
+  writeOutput();
   return 0;
 }

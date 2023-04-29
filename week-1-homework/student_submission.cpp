@@ -41,6 +41,16 @@ void shift_row(int row) {
   message[row][BLOCK_SIZE - 1] = first_char;
 }
 
+void shift_row_reverse(int row) {
+  // This does a shift (really a rotate) of a row, copying each element to the
+  // right
+  auto last_char = message[row][BLOCK_SIZE - 1];
+  for (int i = BLOCK_SIZE - 1; i > 0; i--) {
+    message[row][i] = message[row][i - 1];
+  }
+  message[row][0] = last_char;
+}
+
 /*
  * This function shifts each row by the number of places it is meant to be
  * shifted according to the AES specification. Row zero is shifted by zero
@@ -50,11 +60,27 @@ void shift_row(int row) {
 void shift_rows() {
   // Shift each row, where the row index corresponds to how many columns the
   // data is shifted.
-  for (int row = 1; row < BLOCK_SIZE; ++row) {
-    for (int shifts = 0; shifts < row; ++shifts) {
-      shift_row(row);
-    }
+  // first half of the matrix
+  for (int shifts = 0; shifts < 1; ++shifts) {
+    shift_row(1);
   }
+  for (int shifts = 0; shifts < 2; ++shifts) {
+    shift_row(2);
+  }
+  for (int shifts = 0; shifts < 3; ++shifts) {
+    shift_row(3);
+  }
+  // second half of the matrix
+  for (int shifts = 0; shifts < BLOCK_SIZE - 4; ++shifts) {
+    shift_row_reverse(4);
+  }
+  for (int shifts = 0; shifts < BLOCK_SIZE - 5; ++shifts) {
+    shift_row_reverse(5);
+  }
+  for (int shifts = 0; shifts < BLOCK_SIZE - 6; ++shifts) {
+    shift_row_reverse(6);
+  }
+
 }
 
 /*
@@ -70,9 +96,14 @@ int power(int x, int n, int a = 1) {
 
 void precalculate_powers() {
   for (int i = 0; i < UNIQUE_CHARACTERS; ++i) {
-    for (int j = 0; j < BLOCK_SIZE + 1; ++j) {
-      powers[i][j] = power(i, j);
-    }
+    powers[i][0]=1;
+    powers[i][1]=i;
+    powers[i][2]=i*i;
+    powers[i][3]=powers[i][2]*i;
+    powers[i][4]=powers[i][2]*powers[i][2];
+    powers[i][5]=powers[i][4]*i;
+    powers[i][6]=powers[i][4]*powers[i][2];
+    powers[i][7]=powers[i][4]*powers[i][2]*i;
   }
 }
 

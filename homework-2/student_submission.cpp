@@ -64,22 +64,23 @@ Vector3 trace_ray(const Ray &ray, const std::vector<Sphere> &spheres,
 }
 
 void pixel_compute(int samples, int width, int height, int y, Camera& camera,
-                   int depth, Checksum& checksum, std::vector<Sphere>& spheres,
+                   int depth, Checksum &checksum, std::vector<Sphere>& spheres,
                    int *image_data) {
   for (int x = 0; x < width; x++) {
-    Vector3 pixel_color(0, 0, 0);
-    for (int s = 0; s < samples; s++) {
-      auto u = (float)(x + random_float()) / (width - 1);
-      auto v = (float)(y + random_float()) / (height - 1);
-      auto r = get_camera_ray(camera, u, v);
-      pixel_color += trace_ray(r, spheres, depth);
+      Vector3 pixel_color(0, 0, 0);
+      for (int s = 0; s < samples; s++) {
+        auto u = (float)(x + random_float()) / (width - 1);
+        auto v = (float)(y + random_float()) / (height - 1);
+        auto r = get_camera_ray(camera, u, v);
+        pixel_color += trace_ray(r, spheres, depth);
+      }
+      auto output_color = compute_color(checksum, pixel_color, samples);
+
+      int pos = ((height - 1 - y) * width + x) * 3;
+      image_data[pos] = output_color.r;
+      image_data[pos + 1] = output_color.g;
+      image_data[pos + 2] = output_color.b;
     }
-    auto output_color = compute_color(checksum, pixel_color, samples);
-    int pos = ((height - 1 - y) * width + x) * 3;
-    image_data[pos] = output_color.r;
-    image_data[pos + 1] = output_color.g;
-    image_data[pos + 2] = output_color.b;
-  }
 }
 
 int main(int argc, char **argv) {
@@ -149,7 +150,7 @@ int main(int argc, char **argv) {
   readInput();
   create_random_scene(spheres);
 
-auto image_data =
+  auto image_data =
       static_cast<int *>(malloc(width * height * sizeof(int) * 3));
 
   // checksums for each color individually
@@ -160,9 +161,9 @@ auto image_data =
   // TODO: Try to parallelize this.
   for (int y = height - 1; y >= 0; y -= THREADS) {
     for (int i = 0; i < THREADS; i++) {
-      threads[i] = std::thread(
-          pixel_compute, samples, width, height, y-i, std::ref(camera), depth,
-          std::ref(checksum), std::ref(spheres), std::ref(image_data));
+      threads[i] = std::thread(pixel_compute, samples, width, height, y - i,
+                               std::ref(camera), depth, std::ref(checksum),
+                               std::ref(spheres), std::ref(image_data));
     }
     for (int i = 0; i < THREADS; i++) {
       threads[i].join();

@@ -174,7 +174,6 @@ int main(int argc, char **argv) {
       check_vec[i] = Checksum(0, 0, 0);
     }
   }
-  std::fill(check_vec, check_vec + THREADS, Checksum(0, 0, 0));
   for (int y = (height % THREADS) - 1; y >= 0; y--) {
     threads[y] = std::thread(pixel_compute, samples, width, height, y,
                              std::ref(camera), depth, std::ref(check_vec[y]),

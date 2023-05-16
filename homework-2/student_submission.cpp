@@ -2,10 +2,11 @@
 #include <string.h>
 #include <thread>
 #include <unistd.h>
+#include <mutex>
 
 #define THREADS 16
-
 std::thread threads[THREADS];
+std::mutex mtx;
 
 /*
 ** Checks if the given ray hits a sphere surface and returns.
@@ -74,8 +75,9 @@ void pixel_compute(int samples, int width, int height, int y, Camera& camera,
         auto r = get_camera_ray(camera, u, v);
         pixel_color += trace_ray(r, spheres, depth);
       }
+      mtx.lock();
       auto output_color = compute_color(checksum, pixel_color, samples);
-
+      mtx.unlock();
       int pos = ((height - 1 - y) * width + x) * 3;
       image_data[pos] = output_color.r;
       image_data[pos + 1] = output_color.g;
@@ -159,7 +161,7 @@ int main(int argc, char **argv) {
   // Iterate over each pixel and trace a ray to calculate the color.
   // This is done for samples amount of time for each pixel.
   // TODO: Try to parallelize this.
-  for (int y = height - 1; y >= 0; y -= THREADS) {
+  for (int y = height - 1; y >= THREADS-1; y -= THREADS) {
     for (int i = 0; i < THREADS; i++) {
       threads[i] = std::thread(pixel_compute, samples, width, height, y - i,
                                std::ref(camera), depth, std::ref(checksum),

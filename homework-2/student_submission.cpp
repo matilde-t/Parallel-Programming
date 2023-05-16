@@ -3,6 +3,9 @@
 #include <string.h>
 #include <thread>
 #include <unistd.h>
+#include <chrono>
+#include <numeric>
+#include <iostream>
 
 #define THREADS 16
 
@@ -69,7 +72,7 @@ Vector3 trace_ray(const Ray &ray, const std::vector<Sphere> &spheres,
 }
 
 void pixel_compute(int samples, int width, int height, int x, int y,
-                   Camera camera, int depth, Checksum checksum) {
+                   Camera camera, int depth, Checksum &checksum) {
   Vector3 pixel_color(0, 0, 0);
   for (int s = 0; s < samples; s++) {
     auto u = (float)(x + random_float()) / (width - 1);
@@ -89,6 +92,7 @@ int main(int argc, char **argv) {
   int height = IMAGE_HEIGHT;
   int samples = NUM_SAMPLES;
   int depth = SAMPLE_DEPTH;
+  auto start = std::chrono::high_resolution_clock::now();
 
   // This option parsing is not very interesting.
   int no_output = 0;
@@ -159,13 +163,14 @@ int main(int argc, char **argv) {
   // TODO: Try to parallelize this.
   for (int y = height - 1; y >= 0; y--) {
     for (int x = 0; x < width-THREADS; x += THREADS) {
+      Checksum threads_sum[THREADS]={};
       for (int i = 0; i < THREADS; i++) {
         // std::cout << x+i << "\n";
         threads[i] = std::thread(pixel_compute, samples, width, height, x+i, y,
-                                 std::ref(camera), depth, std::ref(checksum));
+                                 std::ref(camera), depth, std::ref(threads_sum[i]));
       }
-
       for (int i = 0; i < THREADS; i++) {
+        checksum+=threads_sum[i];
         threads[i].join();
       }
     }
@@ -196,5 +201,8 @@ int main(int argc, char **argv) {
   }
   writeOutput(checksum);
   free(image_data);
+  
+    auto end = std::chrono::high_resolution_clock::now();
+    std::cout<<std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
   return 0;
 }

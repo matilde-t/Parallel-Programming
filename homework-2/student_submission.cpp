@@ -1,19 +1,11 @@
 #include "raytracer.h"
-#include <mutex>
 #include <string.h>
 #include <thread>
 #include <unistd.h>
-#include <chrono>
-#include <numeric>
-#include <iostream>
 
 #define THREADS 16
 
-std::mutex mtx;
 std::thread threads[THREADS];
-Vector3 res[THREADS];
-int *image_data;
-std::vector<Sphere> spheres;
 
 /*
 ** Checks if the given ray hits a sphere surface and returns.
@@ -71,20 +63,23 @@ Vector3 trace_ray(const Ray &ray, const std::vector<Sphere> &spheres,
   return Vector3(1.0, 1.0, 1.0) * (1.0 - t) + Vector3(0.5, 0.7, 1.0) * t;
 }
 
-void pixel_compute(int samples, int width, int height, int x, int y,
-                   Camera camera, int depth, Checksum &checksum) {
-  Vector3 pixel_color(0, 0, 0);
-  for (int s = 0; s < samples; s++) {
-    auto u = (float)(x + random_float()) / (width - 1);
-    auto v = (float)(y + random_float()) / (height - 1);
-    auto r = get_camera_ray(camera, u, v);
-    pixel_color += trace_ray(r, spheres, depth);
+void pixel_compute(int samples, int width, int height, int y, Camera& camera,
+                   int depth, Checksum& checksum, std::vector<Sphere>& spheres,
+                   int *image_data) {
+  for (int x = 0; x < width; x++) {
+    Vector3 pixel_color(0, 0, 0);
+    for (int s = 0; s < samples; s++) {
+      auto u = (float)(x + random_float()) / (width - 1);
+      auto v = (float)(y + random_float()) / (height - 1);
+      auto r = get_camera_ray(camera, u, v);
+      pixel_color += trace_ray(r, spheres, depth);
+    }
+    auto output_color = compute_color(checksum, pixel_color, samples);
+    int pos = ((height - 1 - y) * width + x) * 3;
+    image_data[pos] = output_color.r;
+    image_data[pos + 1] = output_color.g;
+    image_data[pos + 2] = output_color.b;
   }
-  auto output_color = compute_color(checksum, pixel_color, samples);
-  int pos = ((height - 1 - y) * width + x) * 3;
-  image_data[pos] = output_color.r;
-  image_data[pos + 1] = output_color.g;
-  image_data[pos + 2] = output_color.b;
 }
 
 int main(int argc, char **argv) {
@@ -92,7 +87,6 @@ int main(int argc, char **argv) {
   int height = IMAGE_HEIGHT;
   int samples = NUM_SAMPLES;
   int depth = SAMPLE_DEPTH;
-  auto start = std::chrono::high_resolution_clock::now();
 
   // This option parsing is not very interesting.
   int no_output = 0;
@@ -144,6 +138,8 @@ int main(int argc, char **argv) {
   Camera camera(Vector3(0, 1, 1), Vector3(0, 0, -1), Vector3(0, 1, 0),
                 aspect_ratio, 90, 0.0f, 1.5f);
 
+  std::vector<Sphere> spheres;
+
   if (!no_output)
     fprintf(stderr, "Output file: %s\n", file_name);
   else {
@@ -153,7 +149,8 @@ int main(int argc, char **argv) {
   readInput();
   create_random_scene(spheres);
 
-  image_data = static_cast<int *>(malloc(width * height * sizeof(int) * 3));
+auto image_data =
+      static_cast<int *>(malloc(width * height * sizeof(int) * 3));
 
   // checksums for each color individually
   Checksum checksum(0, 0, 0);
@@ -161,19 +158,23 @@ int main(int argc, char **argv) {
   // Iterate over each pixel and trace a ray to calculate the color.
   // This is done for samples amount of time for each pixel.
   // TODO: Try to parallelize this.
-  for (int y = height - 1; y >= 0; y--) {
-    for (int x = 0; x < width-THREADS; x += THREADS) {
-      Checksum threads_sum[THREADS]={};
-      for (int i = 0; i < THREADS; i++) {
-        // std::cout << x+i << "\n";
-        threads[i] = std::thread(pixel_compute, samples, width, height, x+i, y,
-                                 std::ref(camera), depth, std::ref(threads_sum[i]));
-      }
-      for (int i = 0; i < THREADS; i++) {
-        checksum+=threads_sum[i];
-        threads[i].join();
-      }
+  for (int y = height - 1; y >= 0; y -= THREADS) {
+    for (int i = 0; i < THREADS; i++) {
+      threads[i] = std::thread(
+          pixel_compute, samples, width, height, y-i, std::ref(camera), depth,
+          std::ref(checksum), std::ref(spheres), std::ref(image_data));
     }
+    for (int i = 0; i < THREADS; i++) {
+      threads[i].join();
+    }
+  }
+  for (int y = (height % THREADS) - 1; y >= 0; y--) {
+    threads[y] = std::thread(pixel_compute, samples, width, height, y,
+                             std::ref(camera), depth, std::ref(checksum),
+                             std::ref(spheres), std::ref(image_data));
+  }
+  for (int y = (height % THREADS) - 1; y >= 0; y--) {
+    threads[y].join();
   }
 
   // Saving the render with PPM format
@@ -201,8 +202,6 @@ int main(int argc, char **argv) {
   }
   writeOutput(checksum);
   free(image_data);
-  
-    auto end = std::chrono::high_resolution_clock::now();
-    std::cout<<std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+
   return 0;
 }

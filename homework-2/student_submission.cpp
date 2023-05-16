@@ -11,6 +11,9 @@
 
 std::mutex mtx;
 std::thread threads[THREADS];
+Vector3 res[THREADS];
+int *image_data;
+std::vector<Sphere> spheres;
 
 /*
 ** Checks if the given ray hits a sphere surface and returns.
@@ -69,7 +72,7 @@ Vector3 trace_ray(const Ray &ray, const std::vector<Sphere> &spheres,
 }
 
 void pixel_compute(int samples, int width, int height, int x, int y,
-                   Camera camera, int depth, Checksum checksum, int* image_data, std::vector<Sphere> spheres) {
+                   Camera camera, int depth, Checksum &checksum) {
   Vector3 pixel_color(0, 0, 0);
   for (int s = 0; s < samples; s++) {
     auto u = (float)(x + random_float()) / (width - 1);
@@ -141,8 +144,6 @@ int main(int argc, char **argv) {
   Camera camera(Vector3(0, 1, 1), Vector3(0, 0, -1), Vector3(0, 1, 0),
                 aspect_ratio, 90, 0.0f, 1.5f);
 
-std::vector<Sphere> spheres;
-
   if (!no_output)
     fprintf(stderr, "Output file: %s\n", file_name);
   else {
@@ -152,7 +153,7 @@ std::vector<Sphere> spheres;
   readInput();
   create_random_scene(spheres);
 
-  auto image_data = static_cast<int*>(malloc(width * height * sizeof(int) * 3));
+  image_data = static_cast<int *>(malloc(width * height * sizeof(int) * 3));
 
   // checksums for each color individually
   Checksum checksum(0, 0, 0);
@@ -166,7 +167,7 @@ std::vector<Sphere> spheres;
       for (int i = 0; i < THREADS; i++) {
         // std::cout << x+i << "\n";
         threads[i] = std::thread(pixel_compute, samples, width, height, x+i, y,
-                                 std::ref(camera), depth, std::ref(checksum), std::ref(image_data), std::ref(spheres));
+                                 std::ref(camera), depth, std::ref(threads_sum[i]));
       }
       for (int i = 0; i < THREADS; i++) {
         checksum+=threads_sum[i];

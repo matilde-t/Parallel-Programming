@@ -1,8 +1,8 @@
 #include "raytracer.h"
+#include <mutex>
 #include <string.h>
 #include <thread>
 #include <unistd.h>
-#include <mutex>
 
 #define THREADS 16
 std::thread threads[THREADS];
@@ -64,25 +64,25 @@ Vector3 trace_ray(const Ray &ray, const std::vector<Sphere> &spheres,
   return Vector3(1.0, 1.0, 1.0) * (1.0 - t) + Vector3(0.5, 0.7, 1.0) * t;
 }
 
-void pixel_compute(int samples, int width, int height, int y, Camera& camera,
-                   int depth, Checksum &checksum, std::vector<Sphere>& spheres,
+void pixel_compute(int samples, int width, int height, int y, Camera &camera,
+                   int depth, Checksum &checksum, std::vector<Sphere> &spheres,
                    int *image_data) {
   for (int x = 0; x < width; x++) {
-      Vector3 pixel_color(0, 0, 0);
-      for (int s = 0; s < samples; s++) {
-        auto u = (float)(x + random_float()) / (width - 1);
-        auto v = (float)(y + random_float()) / (height - 1);
-        auto r = get_camera_ray(camera, u, v);
-        pixel_color += trace_ray(r, spheres, depth);
-      }
-      mtx.lock();
-      auto output_color = compute_color(checksum, pixel_color, samples);
-      mtx.unlock();
-      int pos = ((height - 1 - y) * width + x) * 3;
-      image_data[pos] = output_color.r;
-      image_data[pos + 1] = output_color.g;
-      image_data[pos + 2] = output_color.b;
+    Vector3 pixel_color(0, 0, 0);
+    for (int s = 0; s < samples; s++) {
+      auto u = (float)(x + random_float()) / (width - 1);
+      auto v = (float)(y + random_float()) / (height - 1);
+      auto r = get_camera_ray(camera, u, v);
+      pixel_color += trace_ray(r, spheres, depth);
     }
+    // mtx.lock();
+    auto output_color = compute_color(checksum, pixel_color, samples);
+    // mtx.unlock();
+    int pos = ((height - 1 - y) * width + x) * 3;
+    image_data[pos] = output_color.r;
+    image_data[pos + 1] = output_color.g;
+    image_data[pos + 2] = output_color.b;
+  }
 }
 
 int main(int argc, char **argv) {
@@ -157,27 +157,32 @@ int main(int argc, char **argv) {
 
   // checksums for each color individually
   Checksum checksum(0, 0, 0);
+  Checksum check_vec[THREADS] = {};
 
   // Iterate over each pixel and trace a ray to calculate the color.
   // This is done for samples amount of time for each pixel.
   // TODO: Try to parallelize this.
-  for (int y = height - 1; y >= THREADS-1; y -= THREADS) {
+  for (int y = height - 1; y >= THREADS - 1; y -= THREADS) {
     for (int i = 0; i < THREADS; i++) {
       threads[i] = std::thread(pixel_compute, samples, width, height, y - i,
-                               std::ref(camera), depth, std::ref(checksum),
+                               std::ref(camera), depth, std::ref(check_vec[i]),
                                std::ref(spheres), std::ref(image_data));
     }
     for (int i = 0; i < THREADS; i++) {
       threads[i].join();
+      checksum += check_vec[i];
+      check_vec[i] = Checksum(0, 0, 0);
     }
   }
+  std::fill(check_vec, check_vec + THREADS, Checksum(0, 0, 0));
   for (int y = (height % THREADS) - 1; y >= 0; y--) {
     threads[y] = std::thread(pixel_compute, samples, width, height, y,
-                             std::ref(camera), depth, std::ref(checksum),
+                             std::ref(camera), depth, std::ref(check_vec[y]),
                              std::ref(spheres), std::ref(image_data));
   }
   for (int y = (height % THREADS) - 1; y >= 0; y--) {
     threads[y].join();
+    checksum += check_vec[y];
   }
 
   // Saving the render with PPM format

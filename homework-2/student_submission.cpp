@@ -1,12 +1,10 @@
 #include "raytracer.h"
-#include <mutex>
 #include <string.h>
 #include <thread>
 #include <unistd.h>
 
-#define THREADS 16
+#define THREADS 320
 std::thread threads[THREADS];
-std::mutex mtx;
 
 /*
 ** Checks if the given ray hits a sphere surface and returns.
@@ -64,9 +62,9 @@ Vector3 trace_ray(const Ray &ray, const std::vector<Sphere> &spheres,
   return Vector3(1.0, 1.0, 1.0) * (1.0 - t) + Vector3(0.5, 0.7, 1.0) * t;
 }
 
-void pixel_compute(int samples, int width, int height, int y, Camera &camera,
-                   int depth, Checksum &checksum, std::vector<Sphere> &spheres,
-                   int *image_data) {
+void pixel_compute(int samples, int width, int height, int y,
+                   const Camera &camera, int depth, Checksum &checksum,
+                   const std::vector<Sphere> &spheres) {
   for (int x = 0; x < width; x++) {
     Vector3 pixel_color(0, 0, 0);
     for (int s = 0; s < samples; s++) {
@@ -75,66 +73,15 @@ void pixel_compute(int samples, int width, int height, int y, Camera &camera,
       auto r = get_camera_ray(camera, u, v);
       pixel_color += trace_ray(r, spheres, depth);
     }
-    // mtx.lock();
-    auto output_color = compute_color(checksum, pixel_color, samples);
-    // mtx.unlock();
-    int pos = ((height - 1 - y) * width + x) * 3;
-    image_data[pos] = output_color.r;
-    image_data[pos + 1] = output_color.g;
-    image_data[pos + 2] = output_color.b;
+    compute_color(checksum, pixel_color, samples);
   }
 }
 
 int main(int argc, char **argv) {
   int width = IMAGE_WIDTH;
   int height = IMAGE_HEIGHT;
-  int samples = NUM_SAMPLES;
-  int depth = SAMPLE_DEPTH;
-
-  // This option parsing is not very interesting.
-  int no_output = 0;
-  char file_name[256] = "render.ppm";
-  int c;
-  while ((c = getopt(argc, argv, "d:s:r:n:f:")) != -1) {
-    switch (c) {
-    case 'd':
-      if (sscanf(optarg, "%d", &depth) != 1)
-        goto error;
-      break;
-    case 's':
-      if (sscanf(optarg, "%d", &samples) != 1)
-        goto error;
-      break;
-    case 'r':
-      if (sscanf(optarg, "%dx%d", &width, &height) != 2)
-        goto error;
-      break;
-    case 'n':
-      if (sscanf(optarg, "%d", &no_output) != 1)
-        goto error;
-      break;
-    case 'f':
-      strncpy(file_name, optarg, sizeof(file_name));
-      file_name[255] =
-          '\0'; // safe-guard null-terminator to disable gcc warning
-      break;
-    case '?':
-    error:
-      fprintf(stderr,
-              "Usage:\n"
-              "-d \t number of times a ray can bounce\n"
-              "-s \t number of samples per pixel\n"
-              "-r \t image resolution to be computed\n"
-              "-f \t output file name\n"
-              "-n \t no output(default: 0)\n"
-              "\n"
-              "Example:\n"
-              "%s -d 10 -s 50 -r 720x480 -f tracer.ppm\n",
-              argv[0]);
-      exit(EXIT_FAILURE);
-      break;
-    }
-  }
+  int samples = 20;
+  int depth = 10;
 
   // Calculating the aspect ratio and creating the camera for the rendering
   const auto aspect_ratio = (float)width / height;
@@ -143,17 +90,8 @@ int main(int argc, char **argv) {
 
   std::vector<Sphere> spheres;
 
-  if (!no_output)
-    fprintf(stderr, "Output file: %s\n", file_name);
-  else {
-    fprintf(stderr, "No output will be written\n");
-  }
-
   readInput();
   create_random_scene(spheres);
-
-  auto image_data =
-      static_cast<int *>(malloc(width * height * sizeof(int) * 3));
 
   // checksums for each color individually
   Checksum checksum(0, 0, 0);
@@ -166,7 +104,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < THREADS; i++) {
       threads[i] = std::thread(pixel_compute, samples, width, height, y - i,
                                std::ref(camera), depth, std::ref(check_vec[i]),
-                               std::ref(spheres), std::ref(image_data));
+                               std::ref(spheres));
     }
     for (int i = 0; i < THREADS; i++) {
       threads[i].join();
@@ -175,40 +113,16 @@ int main(int argc, char **argv) {
     }
   }
   for (int y = (height % THREADS) - 1; y >= 0; y--) {
-    threads[y] = std::thread(pixel_compute, samples, width, height, y,
-                             std::ref(camera), depth, std::ref(check_vec[y]),
-                             std::ref(spheres), std::ref(image_data));
+    threads[y] =
+        std::thread(pixel_compute, samples, width, height, y, std::ref(camera),
+                    depth, std::ref(check_vec[y]), std::ref(spheres));
   }
   for (int y = (height % THREADS) - 1; y >= 0; y--) {
     threads[y].join();
     checksum += check_vec[y];
   }
 
-  // Saving the render with PPM format
-  if (!no_output) {
-    FILE *file;
-    if ((file = fopen(file_name, "w")) == NULL) {
-      perror("fopen");
-      exit(EXIT_FAILURE);
-    }
-    if (fprintf(file, "P3\n%d %d %d\n", width, height, 255) < 0) {
-      perror("fprintf");
-      exit(EXIT_FAILURE);
-    }
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        int pos = (y * width + x) * 3;
-        if (fprintf(file, "%d %d %d\n", image_data[pos], image_data[pos + 1],
-                    image_data[pos + 2]) < 0) {
-          perror("fprintf");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    fclose(file);
-  }
   writeOutput(checksum);
-  free(image_data);
 
   return 0;
 }

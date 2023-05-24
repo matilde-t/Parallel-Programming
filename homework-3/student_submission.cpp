@@ -21,10 +21,18 @@ struct Problem {
 class ProblemQueue {
     public:
         void push(Problem problem){
-            problemQueue.push_back(problem);
+            {
+                std :: lock_guard < std :: mutex > lock ( mutex );
+                problemQueue.push_back(problem);
+            }
+            cv . notify_one ();
         }
 
         Problem pop(){
+            std :: unique_lock < std :: mutex > lock ( mutex );
+            while ( queue . empty ()){
+                cv.wait (lock);
+            }
             Problem p = problemQueue.front();
             problemQueue.pop_front();
             return p;
@@ -36,6 +44,8 @@ class ProblemQueue {
 
     private:
         std::deque<Problem> problemQueue;
+        std :: mutex mutex ;
+        std :: condition_variable cv ;
 
 };
 

@@ -7,6 +7,7 @@
 #include <future>
 #include <functional>
 #include <thread>
+#include <mutex>
 #include "Utility.h"
 
 #define MEASURE_TIME true

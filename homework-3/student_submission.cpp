@@ -11,11 +11,9 @@
 
 #include "Utility.h"
 
-#define MEASURE_TIME true
 #define NUM_THREADS 32
 
 std::thread threads[NUM_THREADS];
-std::mutex mtx;
 
 struct Problem {
   Sha1Hash sha1_hash;
@@ -70,6 +68,10 @@ void generateProblem(int seed, int numProblems, int leadingZerosProblem) {
     } while (Utility::count_leading_zero_bits(hash) < leadingZerosProblem);
     problemQueue.push(Problem{hash, i});
   }
+
+  for (int i = 1; i < NUM_THREADS; i++) {
+    problemQueue.push(Problem{Sha1Hash(), -1});
+  }
 }
 
 // This method repeatedly hashes itself until the required amount of leading
@@ -83,14 +85,15 @@ Sha1Hash findSolutionHash(Sha1Hash hash, int leadingZerosSolution) {
   return hash;
 }
 
-void parallel_work(std::vector<Sha1Hash> solutionHashes,
+void parallel_work(std::vector<Sha1Hash> &solutionHashes,
                    int leadingZerosSolution) {
-  while (!problemQueue.empty()) {
-    mtx.lock();
+  while (true) {
     Problem p = problemQueue.pop();
+    if (p.problemNum == -1) {
+      break;
+    }
     solutionHashes[p.problemNum] =
         findSolutionHash(p.sha1_hash, leadingZerosSolution);
-    mtx.unlock();
   }
 }
 
@@ -106,26 +109,10 @@ int main(int argc, char *argv[]) {
 
   unsigned int seed = Utility::readInput();
 
-#if MEASURE_TIME
-  struct timespec generation_start, generation_end;
-  clock_gettime(CLOCK_MONOTONIC, &generation_start);
-#endif
-
   // TO-DO: generate problems in another thread and work on solving them while
   // generation continues
   threads[0] =
       std::thread(generateProblem, seed, numProblems, leadingZerosProblem);
-
-#if MEASURE_TIME
-  clock_gettime(CLOCK_MONOTONIC, &generation_end);
-  double generation_time =
-      (((double)generation_end.tv_sec + 1.0e-9 * generation_end.tv_nsec) -
-       ((double)generation_start.tv_sec + 1.0e-9 * generation_start.tv_nsec));
-  fprintf(stderr, "Generate Problem time:  %.7gs\n", generation_time);
-
-  struct timespec solve_start, solve_end;
-  clock_gettime(CLOCK_MONOTONIC, &solve_start);
-#endif
 
   //   while (!problemQueue.empty()) {
   //     Problem p = problemQueue.pop();
@@ -142,14 +129,6 @@ int main(int argc, char *argv[]) {
     threads[i].join();
   }
 
-#if MEASURE_TIME
-  clock_gettime(CLOCK_MONOTONIC, &solve_end);
-  double solve_time =
-      (((double)solve_end.tv_sec + 1.0e-9 * solve_end.tv_nsec) -
-       ((double)solve_start.tv_sec + 1.0e-9 * solve_start.tv_nsec));
-  fprintf(stderr, "Solve Problem time:     %.7gs\n", solve_time);
-#endif
-
   Sha1Hash solution;
   // guarantee initial solution hash data is zero
   memset(solution.data, 0, SHA1_BYTES);
@@ -160,6 +139,5 @@ int main(int argc, char *argv[]) {
 
   Utility::printHash(solution);
   printf("DONE\n");
-
   return 0;
 }

@@ -2,20 +2,20 @@
 // Created by Dennis-Florian Herr on 13/06/2022.
 //
 
+#include <condition_variable>
 #include <deque>
-#include <functional>
-#include <future>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "Utility.h"
 
 #define MEASURE_TIME true
-#define NUM_THREADS 4
+#define NUM_THREADS 32
 
-std::mutex mtx;
 std::thread threads[NUM_THREADS];
+std::mutex mtx;
 
 struct Problem {
   Sha1Hash sha1_hash;
@@ -25,63 +25,34 @@ struct Problem {
 // TO-DO: implement a thread-safe queue
 // tip: use a condition variable to make threads wait when the queue is empty
 class ProblemQueue {
-    public:
-        void push(Problem problem){
-            {
-                std::lock_guard < std::mutex > lock( mutex );
-                problemQueue.push_back(problem);
-            }
-            cv . notify_one ();
-        }
-
-        Problem pop(){
-            std::unique_lock < std::mutex > lock( mutex );
-            while ( queue . empty ()){
-                cv.wait (lock);
-            }
-            Problem p = problemQueue.front();
-            problemQueue.pop_front();
-            return p;
-        }
-
-  bool empty() { return problemQueue.empty(); }
-
-    private:
-        std::deque<Problem> problemQueue;
-        std::mutex mutex ;
-        std::condition_variable cv ;
-
-};
-
-ProblemQueue problemQueue;
-
-class WorkQueue {
 public:
-  void add_task(std::packaged_task<void()> &&task) {
+  void push(Problem problem) {
     {
-      std::lock_guard<std::mutex> lock(mtx);
-      queue.push_back(std::move(task));
+      std::lock_guard<std::mutex> lock(mutex);
+      problemQueue.push_back(problem);
     }
     cv.notify_one();
   }
-  std::packaged_task<void()> get_task() {
-    std::unique_lock<std::mutex> lock(mtx);
-    while (queue.empty()) {
+
+  Problem pop() {
+    std::unique_lock<std::mutex> lock(mutex);
+    while (problemQueue.empty()) {
       cv.wait(lock);
     }
-    std::packaged_task<void()> task = std::move(queue.front());
-    queue.pop_front();
-    return task;
+    Problem p = problemQueue.front();
+    problemQueue.pop_front();
+    return p;
   }
-  bool empty() { return queue.empty(); }
+
+  bool empty() { return problemQueue.empty(); }
 
 private:
-  std::deque<std::packaged_task<void()>> queue;
-  std::mutex mtx;
+  std::deque<Problem> problemQueue;
+  std::mutex mutex;
   std::condition_variable cv;
 };
 
-WorkQueue workQueue;
+ProblemQueue problemQueue;
 
 // generate numProblems sha1 hashes with leadingZerosProblem leading zero bits
 // This method is intentionally compute intense so you can already start working
@@ -112,6 +83,17 @@ Sha1Hash findSolutionHash(Sha1Hash hash, int leadingZerosSolution) {
   return hash;
 }
 
+void parallel_work(std::vector<Sha1Hash> solutionHashes,
+                   int leadingZerosSolution) {
+  while (!problemQueue.empty()) {
+    mtx.lock();
+    Problem p = problemQueue.pop();
+    solutionHashes[p.problemNum] =
+        findSolutionHash(p.sha1_hash, leadingZerosSolution);
+    mtx.unlock();
+  }
+}
+
 int main(int argc, char *argv[]) {
   int leadingZerosProblem = 8;
   int leadingZerosSolution = 11;
@@ -120,7 +102,7 @@ int main(int argc, char *argv[]) {
   // Not interesting for parallelization
   Utility::parse_input(numProblems, leadingZerosProblem, leadingZerosSolution,
                        argc, argv);
-  Sha1Hash solutionHashes[numProblems];
+  std::vector<Sha1Hash> solutionHashes(numProblems);
 
   unsigned int seed = Utility::readInput();
 
@@ -129,9 +111,10 @@ int main(int argc, char *argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &generation_start);
 #endif
 
-    //TO-DO: generate problems in another thread and work on solving them while generation continues
-    
-std::thread(generateProblem,seed, numProblems, leadingZerosProblem); 
+  // TO-DO: generate problems in another thread and work on solving them while
+  // generation continues
+  threads[0] =
+      std::thread(generateProblem, seed, numProblems, leadingZerosProblem);
 
 #if MEASURE_TIME
   clock_gettime(CLOCK_MONOTONIC, &generation_end);
@@ -144,21 +127,20 @@ std::thread(generateProblem,seed, numProblems, leadingZerosProblem);
   clock_gettime(CLOCK_MONOTONIC, &solve_start);
 #endif
 
-/* REF code delete later
-std::thread threads[NUM_THREADS-1];
- for (int i = 0; i < NUM_THREADS-1; i++) {
-      threads[i] = std::thread(fun, args);
-    } 
-*/
+  //   while (!problemQueue.empty()) {
+  //     Problem p = problemQueue.pop();
+  //     solutionHashes[p.problemNum] =
+  //         findSolutionHash(p.sha1_hash, leadingZerosSolution);
+  //   }
 
-  while (!problemQueue.empty()) {
-    Problem p = problemQueue.pop();
-    for (int i = 0; i < NUM_THREADS-1; i++) {
-      solutionHashes[p.problemNum] = std::thread(findSolutionHash, p.sha1_hash, leadingZerosSolution);
-    } 
+  for (int i = 1; i < NUM_THREADS; i++) {
+    threads[i] = std::thread(parallel_work, std::ref(solutionHashes),
+                             leadingZerosSolution);
   }
 
-  threads[0].join();
+  for (int i = 0; i < NUM_THREADS; i++) {
+    threads[i].join();
+  }
 
 #if MEASURE_TIME
   clock_gettime(CLOCK_MONOTONIC, &solve_end);

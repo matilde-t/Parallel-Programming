@@ -16,7 +16,8 @@ struct Problem {
     int problemNum;
 };
 
-
+// TO-DO: implement a thread-safe queue
+// tip: use a condition variable to make threads wait when the queue is empty
 class ProblemQueue {
     public:
         void push(Problem problem){
@@ -84,6 +85,7 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &generation_start);
     #endif
 
+    //TO-DO: generate problems in another thread and work on solving them while generation continues
     generateProblem(seed, numProblems, leadingZerosProblem);
 
     #if MEASURE_TIME

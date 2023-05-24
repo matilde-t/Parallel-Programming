@@ -6,14 +6,15 @@
 #include <deque>
 #include <future>
 #include <functional>
-
+#include <thread>
 #include "Utility.h"
 
 #define MEASURE_TIME true
+#define NUM_THREADS 4
 
 struct Problem {
     Sha1Hash sha1_hash;
-    int problemNum;
+    int problemNum;thread
 };
 
 // TO-DO: implement a thread-safe queue

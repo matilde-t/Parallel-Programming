@@ -15,10 +15,7 @@
 #define NUM_THREADS 4
 
 std::mutex mtx;
-std::thread threads[32];
-
-std::mutex mtx;
-std::thread threads[32];
+std::thread threads[NUM_THREADS];
 
 struct Problem {
   Sha1Hash sha1_hash;
@@ -133,7 +130,8 @@ int main(int argc, char *argv[]) {
 #endif
 
     //TO-DO: generate problems in another thread and work on solving them while generation continues
-    generateProblem(seed, numProblems, leadingZerosProblem);
+    
+std::thread(generateProblem,seed, numProblems, leadingZerosProblem); 
 
 #if MEASURE_TIME
   clock_gettime(CLOCK_MONOTONIC, &generation_end);
@@ -146,10 +144,18 @@ int main(int argc, char *argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &solve_start);
 #endif
 
+/* REF code delete later
+std::thread threads[NUM_THREADS-1];
+ for (int i = 0; i < NUM_THREADS-1; i++) {
+      threads[i] = std::thread(fun, args);
+    } 
+*/
+
   while (!problemQueue.empty()) {
     Problem p = problemQueue.pop();
-    solutionHashes[p.problemNum] =
-        findSolutionHash(p.sha1_hash, leadingZerosSolution);
+    for (int i = 0; i < NUM_THREADS-1; i++) {
+      solutionHashes[p.problemNum] = std::thread(findSolutionHash, p.sha1_hash, leadingZerosSolution);
+    } 
   }
 
   threads[0].join();

@@ -148,7 +148,8 @@ int main(int argc, char **argv) {
 
   // This is a pseudo 3d (1d storage) array that can be accessed using the
   // OFFSET Macro.
-  unsigned char *image = NULL;
+  auto *image = static_cast<unsigned char *>(
+      malloc(x_resolution * y_resolution * sizeof(unsigned char[3])));
 
   // Calculate the step size.
   x_stepsize = (VIEW_X1 - VIEW_X0) / (1.0 * x_resolution);

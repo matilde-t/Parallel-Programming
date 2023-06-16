@@ -2,70 +2,42 @@
 #include <cstdio>
 #include <cstdlib>
 #include <immintrin.h>
+#include <iostream>
 
-void dmv(const float *mat, const float *in_vec, float *out_vec, size_t mat_size,
-         float alpha, float beta) {
-  float sum = 0;
+void dgemm(float alpha, const float *a, const float *b, float beta, float *c) {
   __m256 alpha_vec = _mm256_set1_ps(alpha);
-  for (size_t row = 0; row < mat_size; row++) {
-    out_vec[row] = beta;
-    __m256 partial_sum = _mm256_set1_ps(0);
-    float partial_sum_array[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-    __m256 partial_row;
-    __m256 partial_vec;
-    __m256 partial_product;
+  for (int row = 0; row < MATRIX_SIZE; row++) { // row of c
+    __m256 partial_mul;
+    for (int col = 0; col < MATRIX_SIZE; col++) { // column of c
+      __m256 partial_a;
+      __m256 partial_b;
+      float partial_sum_array[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-    for (size_t col = 0; col < mat_size; col += 8) {
-      // TODO: define a __m256 type and load 8 float values in the matrix row
-      // into it
-      partial_row = _mm256_load_ps(mat + row * mat_size + col);
+      __m256 partial_sum = _mm256_set1_ps(0);
+      int align = 0;
+      for (int j = 0; j < MATRIX_SIZE - 8; j += 8) {
+        partial_a = _mm256_loadu_ps(a + row * MATRIX_SIZE + j);
+        partial_b = _mm256_loadu_ps(b + col * MATRIX_SIZE + j);
+        partial_mul = _mm256_mul_ps(partial_a, partial_b);
+        partial_mul = _mm256_mul_ps(partial_mul, alpha_vec);
+        partial_sum = _mm256_add_ps(partial_sum, partial_mul);
+        align = j + 8;
+      }
+      _mm256_store_ps(partial_sum_array, partial_sum);
+      float sum = 0;
+      for (int k = 0; k < MATRIX_SIZE % 8; k++) {
+        sum += alpha * a[row * MATRIX_SIZE + align + k] *
+               b[col * MATRIX_SIZE + align + k];
+      }
+      for (int k = 0; k < 8; k++) {
+        sum += partial_sum_array[k];
+      }
 
-      // TODO: define a __m256 type and load 8 float values in the vector into
-      // it
-      partial_vec = _mm256_load_ps(in_vec + col);
-
-      // TODO: perform element-wise product between the above two __m256 type
-      // and store it in a new __m256 type
-      partial_product = _mm256_mul_ps(partial_row, partial_vec);
-      partial_product = _mm256_mul_ps(partial_product, alpha_vec);
-
-      // TODO: add partial_sum and the product result, and assign the result to
-      // partial_sum
-      partial_sum = _mm256_add_ps(partial_sum, partial_product);
+      c[row * MATRIX_SIZE + col] *= beta;
+      c[row * MATRIX_SIZE + col] += sum;
     }
-
-    // TODO: store the partial_sum into partial_sum_array
-    _mm256_store_ps(partial_sum_array, partial_sum);
-
-    for (int i = 0; i < 8; i++) {
-      out_vec[row] += partial_sum_array[i];
-    }
-    sum += out_vec[row];
-  }
-  for (size_t row = 0; row < mat_size; row++) {
-    out_vec[row] /= sum;
   }
 }
-
-// void dgemm(float alpha, const float *a, const float *b, float beta, float *c)
-// {
-//     for (int i = 0; i < MATRIX_SIZE; i++) { // row of c
-//         for (int j = 0; j < MATRIX_SIZE; j++) { // col of c
-//             c[i * MATRIX_SIZE + j] *= beta;h
-//             for (int k = 0; k < MATRIX_SIZE; k++) { // i-th row of a, j-th
-//             row of b
-//                 c[i * MATRIX_SIZE + j] += alpha * a[i * MATRIX_SIZE + k] *
-//                 b[j * MATRIX_SIZE + k];
-//             }
-//         }
-//     }
-// }
-
-// void dgemm(float alpha, const float *a, const float *b, float beta, float *c) {
-//   for (int i = 0; i < MATRIX_SIZE; i++) {
-//     dmv(a, b + i * MATRIX_SIZE, c + i * MATRIX_SIZE, MATRIX_SIZE, alpha, beta);
-//   }
-// }
 
 int main(int, char **) {
   float alpha, beta;
@@ -92,8 +64,7 @@ int main(int, char **) {
 
   std::cerr << "Launching dgemm step." << std::endl;
   // matrix-multiplication
-  // dgemm(alpha, a, b, beta, c);
-  dmv(a, b, c, MATRIX_SIZE, alpha, beta);
+  dgemm(alpha, a, b, beta, c);
 
   outputSolution(c);
 
